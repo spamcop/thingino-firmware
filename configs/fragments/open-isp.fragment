@@ -1,0 +1,5 @@
+# Open ISP stack (experimental): open-tx-isp + OpenIMP.
+# Replaces the proprietary Ingenic TX-ISP kernel driver and libimp
+# userspace ABI. See package/thingino-isp/Config.in.
+BR2_PACKAGE_THINGINO_ISP_OPEN=y
+# BR2_PACKAGE_THINGINO_ISP_PROPRIETARY is not set
