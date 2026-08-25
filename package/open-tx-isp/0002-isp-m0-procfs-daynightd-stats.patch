@@ -1,0 +1,79 @@
+From 0000000000000000000000000000000000000002 Mon Sep 17 00:00:00 2001
+From: Paul Philippov <paul@themactep.com>
+Date: Mon, 25 Aug 2025 00:00:00 +0000
+Subject: [PATCH] open-tx-isp: expose OEM isp-m0 stats for daynightd
+
+The /proc/jz/isp/isp-m0 node only printed the raw isp->frame_count,
+which daynightd cannot parse, so its brightness read collapsed to -1.
+
+Emit the OEM key-value layout daynightd's parse_isp_m0() expects. The open
+driver tracks integration_time/max_integration_time live, so emit those
+real values. ISP EV value log2 is emitted as 0 on purpose: daynightd then
+falls back to the integration-time ratio (integration_time /
+max_integration_time), which is live and monotonic in scene brightness,
+instead of trusting a fabricated EV value from the not-yet-exposed AE
+gain state.
+
+Signed-off-by: Paul Philippov <paul@themactep.com>
+---
+diff --git i/driver/t31/tx_isp_proc.c w/driver/t31/tx_isp_proc.c
+index cbf322b4..b4b096dc 100644
+--- i/driver/t31/tx_isp_proc.c
++++ w/driver/t31/tx_isp_proc.c
+@@ -374,14 +374,54 @@ static const TX_ISP_PROC_OPS tx_isp_proc_fs_fops = {
+ static int tx_isp_proc_m0_show(struct seq_file *m, void *v)
+ {
+     struct tx_isp_dev *isp = m->private;
++    struct tx_isp_sensor_attribute *a;
++    u32 integ, max_integ, max_again, max_dgain;
+ 
+     if (!isp) {
+         seq_printf(m, "0");
+         return 0;
+     }
+ 
+-    /* M0 proc entry for main ISP core status */
+-    seq_printf(m, "%u", isp->frame_count);
++    if (!isp->sensor) {
++        seq_printf(m, "sensor doesn't work, please enable sensor\n");
++        return 0;
++    }
++
++    a = &isp->sensor->attr;
++    integ = a->integration_time;
++    max_integ = a->max_integration_time;
++    max_again = a->max_again;
++    max_dgain = a->max_dgain;
++
++    /* Emit the OEM /proc/jz/isp/isp-m0 key-value layout that daynightd
++     * parses (see package/thingino-daynightd/files/daynightd.c). The open
++     * driver tracks integration_time/max_integration_time live in
++     * tx_isp_sensor_attribute, but the current AE .again/.dgain fields are
++     * not live-updated (they read 0), and the hardware AE state is packed
++     * in the 0xa004..0xa828 parameter registers without a simple EV accessor.
++     *
++     * Emit ISP EV value log2 as 0 on purpose: daynightd treats ev_log2>0 as
++     * the primary signal and otherwise falls back to the integration-time
++     * ratio (integration_time / max_integration_time), which IS live and
++     * monotonic in scene brightness. This yields a correct day/night signal
++     * without us fabricating an EV value. */
++    seq_printf(m, "ISP Runing Mode : %s\n",
++               isp->day_night == 1 ? "Night" : "Day");
++    seq_printf(m, "SENSOR Integration Time : %u lines\n", integ);
++    seq_printf(m, "SENSOR Max Integration Time : %u lines\n", max_integ);
++    seq_printf(m, "MAX SENSOR analog gain : %u\n", max_again >> 16);
++    seq_printf(m, "SENSOR analog gain : %u\n", max_again >> 16);
++    seq_printf(m, "SENSOR digital gain : %u\n", 0);
++    seq_printf(m, "MAX ISP digital gain : %u\n", max_dgain >> 16);
++    seq_printf(m, "ISP digital gain : %u\n", 0);
++    seq_printf(m, "ISP EV value log2: 0\n");
++    seq_printf(m, "ISP EV value us: 0\n");
++    seq_printf(m, "ISP EV value: 0\n");
++
++    /* AWB gains are not yet exposed via a stable getter; emit zeros. */
++    seq_printf(m, "ISP WB weighted rgain: 0\n");
++    seq_printf(m, "ISP WB weighted bgain: 0\n");
++    seq_printf(m, "ISP WB color temperature: 0\n");
+ 
+     return 0;
+ }
