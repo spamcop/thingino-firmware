@@ -35,17 +35,39 @@ config BR2_PACKAGE_THINGINO_ISP_OPEN
 	select BR2_PACKAGE_INGENIC_SDK
 	select BR2_PACKAGE_INGENIC_LIB
 	select BR2_PACKAGE_OPEN_TX_ISP
-	select BR2_PACKAGE_OPENIMP if BR2_PACKAGE_OPENIMP_SUPPORTED
-	select BR2_PACKAGE_INGENIC_LIB_LIBIMP if !BR2_PACKAGE_OPENIMP_SUPPORTED
 	select BR2_PACKAGE_INGENIC_SYSTEM_LIBS_NEO
 	select BR2_PACKAGE_INGENIC_SYSTEM_LIBS_NEO_LIBALOG
 	select BR2_PACKAGE_INGENIC_SYSTEM_LIBS_NEO_LIBSYSUTILS
 	select BR2_PACKAGE_LIBAUDIOPROCESS_NEO
 	help
-	  Use open-tx-isp together with OpenIMP on supported T31,
-	  T40, and T41 targets. T23 uses open-tx-isp with the Ingenic
-	  libimp ABI provider because OpenIMP does not yet support T23.
+	  Use the open-tx-isp kernel driver. The userspace libimp.so
+	  ABI provider is selected by the separate choice below; on T31
+	  the proprietary Ingenic libimp.so is recommended because the
+	  OpenIMP build is still video-focused and omits the IMP audio
+	  and some OSD/IVS entry points that feature-rich streamers
+	  (prudynt) require.
 
 	  Image tuning and sensor coverage remain experimental.
+
+endchoice
+
+choice
+	prompt "Open ISP userspace ABI"
+	default BR2_PACKAGE_THINGINO_ISP_OPEN_ABI_LIBIMP
+	depends on BR2_PACKAGE_THINGINO_ISP_OPEN
+	help
+	  Select the libimp.so provider for the open-tx-isp kernel
+	  driver. OpenIMP is the fully open replacement but its T31
+	  build is video-focused (no IMP audio, incomplete OSD/IVS),
+	  which breaks the link of streamers that use those entry points.
+
+config BR2_PACKAGE_THINGINO_ISP_OPEN_ABI_OPENIMP
+	bool "OpenIMP"
+	depends on BR2_PACKAGE_OPENIMP_SUPPORTED
+	select BR2_PACKAGE_OPENIMP
+
+config BR2_PACKAGE_THINGINO_ISP_OPEN_ABI_LIBIMP
+	bool "Proprietary Ingenic libimp.so"
+	select BR2_PACKAGE_INGENIC_LIB_LIBIMP
 
 endchoice
