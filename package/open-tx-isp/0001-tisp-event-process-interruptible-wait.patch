@@ -1,0 +1,36 @@
+From 0000000000000000000000000000000000000001 Mon Sep 17 00:00:00 2001
+From: Paul Philippov <paul@themactep.com>
+Date: Mon, 25 Aug 2025 00:00:00 +0000
+Subject: [PATCH] open-tx-isp: make tisp_event_process wait interruptible
+
+tisp_event_process() waits on tevent_info with
+wait_for_completion_timeout(), which sleeps in TASK_UNINTERRUPTIBLE.
+The kthread that calls it in a loop (isp_fw_process) therefore shows up
+in "D" state for its entire 200 ms idle timeout on every cycle. A D-state
+task counts against the Linux load average even though it burns no CPU,
+so a camera sitting idle with the streamer holding /dev/isp open reports
+a permanent ~1 unit of phantom load. It also cannot be woken by
+kthread_stop(), which makes clean teardown hang (the deinit path already
+calls kthread_stop() on this thread).
+
+Switch to wait_for_completion_interruptible_timeout(). The producer side
+(complete(&tevent_info)) wakes interruptible and uninterruptible waiters
+identically, so event dispatch is unaffected. The only behavior change is
+that the thread sleeps in TASK_INTERRUPTIBLE: it no longer inflates load
+average, and kthread_stop() can terminate it cleanly. The existing
+-ERESTARTSYS branch then becomes reachable and meaningful (it was dead
+code because the uninterruptible variant can never return ERESTARTSYS).
+
+Signed-off-by: Paul Philippov <paul@themactep.com>
+---
+--- a/driver/t31/tx_isp_tuning.c
++++ b/driver/t31/tx_isp_tuning.c
+@@ -30824,7 +30824,7 @@
+ 
+     /* OEM: wait_for_completion_timeout(&tevent_info, 0x14)
+      * 0x14 = 20 jiffies.  At HZ=100 that is 200 ms. */
+-    ret = wait_for_completion_timeout(&tevent_info, msecs_to_jiffies(200));
++    ret = wait_for_completion_interruptible_timeout(&tevent_info, msecs_to_jiffies(200));
+ 
+     if (ret == -ERESTARTSYS) {
+         /* OEM: prints "wake up by signal", returns 0 */
